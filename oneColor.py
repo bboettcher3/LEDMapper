@@ -1,4 +1,5 @@
 from enum import Enum
+from pickle import FALSE
 from colour import Color
 import argparse
 import time
@@ -20,8 +21,11 @@ LED_CHANNEL = 0       # set to '1' for GPIOs 13, 19, 41, 45 or 53
 MIDI_CC_BRIGHTNESS = 15
 MIDI_CC_COLOR = 11
 
-class Preset(Enum):
-    SOLID_GRADIENT = 0
+class Preset:
+    def __init__(self, name, idx, param):
+        self.name = name
+        self.idx = idx
+        self.param = param
     #wipe = 1
     #theaterChase = 2
     #wheel = 3
@@ -29,8 +33,33 @@ class Preset(Enum):
     #rainbowCycle = 5
     #theaterChaseRainbow = 6
 
+PRESETS = [Preset("Solid Gradient", 0, 0)]
+
+# Global bookkeeping  
+curPreset = PRESETS[0]
+curColor = Color("red") # Start with red
+curBrightness = 0.8 # Medium-high brightness
+
 def get24BitColor(color):
     return (int(color.red * 255) << 16) | (int(color.green * 255) << 8) | int(color.blue * 255)
+
+# Returns a list of nb color HSL tuples between begin_hsl and end_hsl
+def colorScale(begin_hsl, end_hsl, nb):
+    if nb < 0:
+        raise ValueError("Unsupported negative number of colors (nb=%r)." % nb)
+
+    step = tuple([float(end_hsl[i] - begin_hsl[i]) / nb for i in range(0, 3)]) \
+           if nb > 0 else (0, 0, 0)
+
+    def mul(step, value):
+        return tuple([v * value for v in step])
+    def add_v(step, step2):
+        return tuple([(v + step2[i]) % 1.0001 for i, v in enumerate(step)])
+    return [add_v(begin_hsl, mul(step, r)) for r in range(0, nb + 1)]
+
+def rangeTo(start, end, steps):
+    for hsl in colorScale(start.hsl, end.hsl, steps - 1):
+        yield Color(hsl=hsl)
 
 # Define functions which animate LEDs in various ways.
 #def colorWipe(strip, color, wait_ms=50):
@@ -94,24 +123,37 @@ def get24BitColor(color):
 
 # Applies a solid gradient across the strip
 # gradientAmount: Amount of hue to interpolate for the end color of the strip (0.0-1.0)
-def solidGradient(strip, color, brightness, gradientAmount):
-    endHue = (color.hue + gradientAmount) % 1.0
-    print("startHue: ")
-    print(color.hue)
-    print("endHue: ")
+def solidGradient(strip):
+    endHue = curColor.hue + curPreset.param
+    print("--")
+    print(curColor.hue)
     print(endHue)
-    endColor = Color(hue = endHue, saturation = 1, luminance = brightness * 0.5)
-    gradientColors = list(color.range_to(endColor, LED_COUNT))
+    endColor = Color(hue = endHue, saturation = 1, luminance = curColor.luminance)
+    gradientColors = list(rangeTo(curColor, endColor, LED_COUNT))
     for i in range(strip.numPixels()):
-        curColor = get24BitColor(gradientColors[i])
-        strip.setPixelColor(i, curColor)
+        pixelColor = get24BitColor(gradientColors[i])
+        strip.setPixelColor(i, pixelColor)
     strip.show()
 
-def handleMidiMessage(strip, color, brightness, message):
+def handleMidiMessage(strip, message):
     messageCC = message[0][1]
-    if messageCC == Preset.SOLID_GRADIENT.value:
-        solidGradient(strip, color, brightness, message[0][2] / 128.0)
+    messageVal = message[0][2]
+    global curPreset
+    # Update current preset
+    for i in range(len(PRESETS)):
+        if messageCC == PRESETS[i].idx:
+            if curPreset.name != PRESETS[i].name:
+                curPreset = PRESETS[i]
+            curPreset.param = messageVal / 128.0
+    # Update base color and brightness
+    if messageCC == MIDI_CC_COLOR:
+        curColor.hue = messageVal / 128.0
+    elif messageCC == MIDI_CC_BRIGHTNESS:
+        curColor.luminance = messageVal / 256.0
 
+    # Update LED strip based on current preset
+    if curPreset.name == "Solid Gradient":
+        solidGradient(strip)
 
 # Main program logic follows:
 if __name__ == '__main__':
@@ -119,10 +161,6 @@ if __name__ == '__main__':
     strip = PixelStrip(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
     # Intialize the library (must be called once before other functions).
     strip.begin()
-
-    curPreset = Preset.SOLID_GRADIENT
-    curColor = Color("red") # Start with red
-    curBrightness = 0.8 # Medium-high brightness
 
     for i in range(strip.numPixels()):
         strip.setPixelColor(i, get24BitColor(curColor))
@@ -139,8 +177,7 @@ if __name__ == '__main__':
         while True:
             if inp.poll():
                 # Only process the most recent MIDI message to avoid redundant operations
-                curPreset = handleMidiMessage(strip, curColor, curBrightness, inp.read(1000)[-1])
-
+                handleMidiMessage(strip, inp.read(1000)[-1])
             time.sleep(50.0/1000)
 
     except KeyboardInterrupt:
