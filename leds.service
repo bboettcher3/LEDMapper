@@ -1,0 +1,9 @@
+[Unit]
+Description=Cool LEDs
+
+[Service]
+ExecStart=/usr/bin/python /home/pi/Documents/ledPlayground-python/oneColor.py
+
+[Install]
+WantedBy=multi-user.target
+
