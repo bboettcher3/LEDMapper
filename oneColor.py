@@ -134,7 +134,7 @@ def solidGradient(strip):
     endColor = Color(hue = endHue, saturation = 1, luminance = curColor.luminance)
     gradientColors = list(rangeTo(curColor, endColor, LED_COUNT / 2))
     smoothColors = gradientColors + list(reversed(gradientColors))
-    startIdx = int((curTimestamp % LED_COUNT) * curMovementRate * 4)
+    startIdx = int(curTimestamp * curMovementRate * 4) % LED_COUNT
     rotColors = [smoothColors[(i+startIdx) % len(smoothColors)] for i in range(len(smoothColors))]
     for i in range(strip.numPixels()):
         pixelColor = get24BitColor(rotColors[i])
@@ -188,7 +188,7 @@ if __name__ == '__main__':
                 solidGradient(strip)
 
             time.sleep(50.0/1000)
-            curTimestamp += 1
+            curTimestamp = (curTimestamp + 1) % (LED_COUNT * 16)
 
     except KeyboardInterrupt:
         for i in range(strip.numPixels()):
