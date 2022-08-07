@@ -2,7 +2,7 @@
 Description=Cool LEDs
 
 [Service]
-ExecStart=/usr/bin/python /home/pi/Documents/LEDMapper/oneColor.py
+ExecStart=/usr/bin/python /home/pi/Documents/LEDMapper/ledMapper.py
 
 [Install]
 WantedBy=multi-user.target
