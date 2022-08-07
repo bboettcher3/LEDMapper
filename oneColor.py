@@ -20,6 +20,7 @@ LED_CHANNEL = 0       # set to '1' for GPIOs 13, 19, 41, 45 or 53
 # MIDI controller CCs
 MIDI_CC_BRIGHTNESS = 15
 MIDI_CC_COLOR = 11
+MIDI_CC_MV_RATE = 7
 
 class Preset:
     def __init__(self, name, idx, param):
@@ -37,6 +38,8 @@ PRESETS = [Preset("Solid Gradient", 0, 0)]
 
 # Global bookkeeping  
 curPreset = PRESETS[0]
+curTimestamp = 0
+curMovementRate = 0.0
 curColor = Color("red") # Start with red
 curBrightness = 0.8 # Medium-high brightness
 
@@ -124,14 +127,17 @@ def rangeTo(start, end, steps):
 # Applies a solid gradient across the strip
 # gradientAmount: Amount of hue to interpolate for the end color of the strip (0.0-1.0)
 def solidGradient(strip):
+    global curColor
+    global curPreset
+    global curMovementRate
     endHue = curColor.hue + curPreset.param
-    print("--")
-    print(curColor.hue)
-    print(endHue)
     endColor = Color(hue = endHue, saturation = 1, luminance = curColor.luminance)
-    gradientColors = list(rangeTo(curColor, endColor, LED_COUNT))
+    gradientColors = list(rangeTo(curColor, endColor, LED_COUNT / 2))
+    smoothColors = gradientColors + list(reversed(gradientColors))
+    startIdx = int((curTimestamp % LED_COUNT) * curMovementRate * 4)
+    rotColors = [smoothColors[(i+startIdx) % len(smoothColors)] for i in range(len(smoothColors))]
     for i in range(strip.numPixels()):
-        pixelColor = get24BitColor(gradientColors[i])
+        pixelColor = get24BitColor(rotColors[i])
         strip.setPixelColor(i, pixelColor)
     strip.show()
 
@@ -139,6 +145,7 @@ def handleMidiMessage(strip, message):
     messageCC = message[0][1]
     messageVal = message[0][2]
     global curPreset
+    global curMovementRate
     # Update current preset
     for i in range(len(PRESETS)):
         if messageCC == PRESETS[i].idx:
@@ -150,10 +157,8 @@ def handleMidiMessage(strip, message):
         curColor.hue = messageVal / 128.0
     elif messageCC == MIDI_CC_BRIGHTNESS:
         curColor.luminance = messageVal / 256.0
-
-    # Update LED strip based on current preset
-    if curPreset.name == "Solid Gradient":
-        solidGradient(strip)
+    elif messageCC == MIDI_CC_MV_RATE:
+        curMovementRate = messageVal / 128.0
 
 # Main program logic follows:
 if __name__ == '__main__':
@@ -178,7 +183,12 @@ if __name__ == '__main__':
             if inp.poll():
                 # Only process the most recent MIDI message to avoid redundant operations
                 handleMidiMessage(strip, inp.read(1000)[-1])
+            # Update LED strip based on current preset
+            if curPreset.name == "Solid Gradient":
+                solidGradient(strip)
+
             time.sleep(50.0/1000)
+            curTimestamp += 1
 
     except KeyboardInterrupt:
         for i in range(strip.numPixels()):
