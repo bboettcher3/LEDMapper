@@ -9,7 +9,7 @@ def _colorScale(begin_hsl, end_hsl, nb):
     if nb < 0:
         raise ValueError("Unsupported negative number of colors (nb=%r)." % nb)
 
-    step = tuple([float(end_hsl[i] - begin_hsl[i]) // nb for i in range(0, 3)]) \
+    step = tuple([float(end_hsl[i] - begin_hsl[i]) / nb for i in range(0, 3)]) \
            if nb > 0 else (0, 0, 0)
 
     def mul(step, value):

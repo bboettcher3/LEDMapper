@@ -65,8 +65,9 @@ class LEDManager:
 
     def changePreset(self, idx):
         if idx < 0 or idx >= len(self.presets):
-            logging.warning(f"Preset ID {idx} is out of range 0-{len(self.presets)}!")
-        self._currentPreset = idx
+            logging.warning(f"Preset ID {idx} is out of range 0-{len(self.presets)-1}!")
+        else:
+            self._currentPreset = idx
 
     def tick(self):
         self.currentPreset.func(self._strip, self._state)
