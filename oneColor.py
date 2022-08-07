@@ -1,10 +1,19 @@
+# Local imports
+from presets import solidGradient
+
+# Standard library
+from collections import namedtuple
 from enum import Enum
 from pickle import FALSE
-from colour import Color
 import argparse
+import logging
+import sys
 import time
+
+# Third-party libraries
+from colour import Color
 from rpi_ws281x import PixelStrip
-import sys, pygame, pygame.midi
+import pygame, pygame.midi
 
 # This program uses a Faderfox MIDI controller to select and control up to 14 LED strip preset patterns.
 
@@ -22,143 +31,50 @@ MIDI_CC_BRIGHTNESS = 15
 MIDI_CC_COLOR = 11
 MIDI_CC_MV_RATE = 7
 
-class Preset:
-    def __init__(self, name, idx, param):
-        self.name = name
-        self.idx = idx
-        self.param = param
-    #wipe = 1
-    #theaterChase = 2
-    #wheel = 3
-    #rainbow = 4
-    #rainbowCycle = 5
-    #theaterChaseRainbow = 6
 
-PRESETS = [Preset("Solid Gradient", 0, 0)]
+# Other globals
+TICK_RATE_MS = 50.0
+RESOLUTION_MIDI = 128.0
+RESOLUTION_24BIT = 256.0
+DEFAULT_BRIGHTNESS = 0.8
 
-# Global bookkeeping  
-curPreset = PRESETS[0]
-curTimestamp = 0
-curMovementRate = 0.0
-curColor = Color("red") # Start with red
-curBrightness = 0.8 # Medium-high brightness
 
-def get24BitColor(color):
-    return (int(color.red * 255) << 16) | (int(color.green * 255) << 8) | int(color.blue * 255)
+LEDState = namedtuple("LEDState", ["movementRate", "color", "brightness", "param", "timestamp"])
+Preset = namedtuple("Preset", ["name", "idx", "func"])
 
-# Returns a list of nb color HSL tuples between begin_hsl and end_hsl
-def colorScale(begin_hsl, end_hsl, nb):
-    if nb < 0:
-        raise ValueError("Unsupported negative number of colors (nb=%r)." % nb)
+class LEDManager:
+    def __init__(self, presets, strip):
+        self.presets = presets
+        self._input = None
+        self._currentPreset = 0
+        self._strip = strip
+        self._state = LEDState(0.0, "red", DEFAULT_BRIGHTNESS, 0, 0)
 
-    step = tuple([float(end_hsl[i] - begin_hsl[i]) / nb for i in range(0, 3)]) \
-           if nb > 0 else (0, 0, 0)
+    def handleMidiMessage(self, message):
+        messageCC, messageVal = message[0][1], message[0][2]
+        # Update base color and brightness
+        if messageCC == MIDI_CC_COLOR:
+            self._state.color.hue = messageVal / RESOLUTION_MIDI
+        elif messageCC == MIDI_CC_BRIGHTNESS:
+            self._state.color.luminance = messageVal / RESOLUTION_24BIT
+        elif messageCC == MIDI_CC_MV_RATE:
+            self._state.movementRate = messageVal / RESOLUTION_MIDI
+        else:
+            self.changePreset(messageCC)
+            self._state.param = messageVal / RESOLUTION_MIDI
 
-    def mul(step, value):
-        return tuple([v * value for v in step])
-    def add_v(step, step2):
-        return tuple([(v + step2[i]) % 1.0001 for i, v in enumerate(step)])
-    return [add_v(begin_hsl, mul(step, r)) for r in range(0, nb + 1)]
+    def changePreset(self, idx):
+        if idx < 0 or idx >= len(self.presets):
+            logging.warning(f"Preset ID {idx} is out of range 0-{len(self.presets)}!")
+        self._currentPreset = idx
 
-def rangeTo(start, end, steps):
-    for hsl in colorScale(start.hsl, end.hsl, steps - 1):
-        yield Color(hsl=hsl)
+    def tick(self):
+        self.currentPreset.func(self._strip, self._state)
+        self._state.timestamp = (self._state.timestamp + 1) % (LED_COUNT * 16)
 
-# Define functions which animate LEDs in various ways.
-#def colorWipe(strip, color, wait_ms=50):
-#    """Wipe color across display a pixel at a time."""
-#    for i in range(strip.numPixels()):
-#        strip.setPixelColor(i, color)
-#        if (wait_ms != 0): 
-#                strip.show()
-#       		time.sleep(wait_ms / 1000.0)
-#    strip.show()
-#
-#def theaterChase(strip, color, wait_ms=50, iterations=10):
-#    """Movie theater light style chaser animation."""
-#    for j in range(iterations):
-#        for q in range(3):
-#            for i in range(0, strip.numPixels(), 3):
-#                strip.setPixelColor(i + q, color)
-#            strip.show()
-#            time.sleep(wait_ms / 1000.0)
-#            for i in range(0, strip.numPixels(), 3):
-#                strip.setPixelColor(i + q, 0)
-#
-#def wheel(pos):
-#    """Generate rainbow colors across 0-255 positions."""
-#    if pos < 85:
-#        return Color(pos * 3, 255 - pos * 3, 0)
-#    elif pos < 170:
-#        pos -= 85
-#        return Color(255 - pos * 3, 0, pos * 3)
-#    else:
-#        pos -= 170
-#        return Color(0, pos * 3, 255 - pos * 3)
-
-#def rainbow(strip, wait_ms=20, iterations=1):
-#    """Draw rainbow that fades across all pixels at once."""
-#    for j in range(256 * iterations):
-#        for i in range(strip.numPixels()):
-#            strip.setPixelColor(i, wheel((i + j) & 255))
-#        strip.show()
-#        time.sleep(wait_ms / 1000.0)
-
-#def rainbowCycle(strip, wait_ms=20, iterations=5):
-#    """Draw rainbow that uniformly distributes itself across all pixels."""
-#    for j in range(256 * iterations):
-#        for i in range(strip.numPixels()):
-#            strip.setPixelColor(i, wheel(
-#                (int(i * 256 / strip.numPixels()) + j) & 255))
-#        strip.show()
-#        time.sleep(wait_ms / 1000.0)
-
-#def theaterChaseRainbow(strip, wait_ms=50):
-#    """Rainbow movie theater light style chaser animation."""
-#    for j in range(256):
-#        for q in range(3):
-#            for i in range(0, strip.numPixels(), 3):
-#                strip.setPixelColor(i + q, wheel((i + j) % 255))
-#            strip.show()
-#            time.sleep(wait_ms / 1000.0)
-#            for i in range(0, strip.numPixels(), 3):
-#                strip.setPixelColor(i + q, 0)
-
-# Applies a solid gradient across the strip
-# gradientAmount: Amount of hue to interpolate for the end color of the strip (0.0-1.0)
-def solidGradient(strip):
-    global curColor
-    global curPreset
-    global curMovementRate
-    endHue = curColor.hue + curPreset.param
-    endColor = Color(hue = endHue, saturation = 1, luminance = curColor.luminance)
-    gradientColors = list(rangeTo(curColor, endColor, LED_COUNT / 2))
-    smoothColors = gradientColors + list(reversed(gradientColors))
-    startIdx = int(curTimestamp * curMovementRate * 4) % LED_COUNT
-    rotColors = [smoothColors[(i+startIdx) % len(smoothColors)] for i in range(len(smoothColors))]
-    for i in range(strip.numPixels()):
-        pixelColor = get24BitColor(rotColors[i])
-        strip.setPixelColor(i, pixelColor)
-    strip.show()
-
-def handleMidiMessage(strip, message):
-    messageCC = message[0][1]
-    messageVal = message[0][2]
-    global curPreset
-    global curMovementRate
-    # Update current preset
-    for i in range(len(PRESETS)):
-        if messageCC == PRESETS[i].idx:
-            if curPreset.name != PRESETS[i].name:
-                curPreset = PRESETS[i]
-            curPreset.param = messageVal / 128.0
-    # Update base color and brightness
-    if messageCC == MIDI_CC_COLOR:
-        curColor.hue = messageVal / 128.0
-    elif messageCC == MIDI_CC_BRIGHTNESS:
-        curColor.luminance = messageVal / 256.0
-    elif messageCC == MIDI_CC_MV_RATE:
-        curMovementRate = messageVal / 128.0
+    @property
+    def currentPreset(self):
+        return self.presets[self.currentPreset]
 
 # Main program logic follows:
 if __name__ == '__main__':
@@ -167,28 +83,23 @@ if __name__ == '__main__':
     # Intialize the library (must be called once before other functions).
     strip.begin()
 
-    for i in range(strip.numPixels()):
-        strip.setPixelColor(i, get24BitColor(curColor))
-    strip.show()
-
     # set up pygame
     pygame.init()
     pygame.midi.init()
-
     # open the first non-internal MIDI internal device
     inp = pygame.midi.Input(3)
+
+    presets = [Preset("Solid Gradient", solidGradient)]
+    LEDS = LEDManager(presets, strip)
 
     try:
         while True:
             if inp.poll():
                 # Only process the most recent MIDI message to avoid redundant operations
-                handleMidiMessage(strip, inp.read(1000)[-1])
+                LEDS.handleMidiMessage(inp.read(1000)[-1])
             # Update LED strip based on current preset
-            if curPreset.name == "Solid Gradient":
-                solidGradient(strip)
-
-            time.sleep(50.0/1000)
-            curTimestamp = (curTimestamp + 1) % (LED_COUNT * 16)
+            LEDS.tick()
+            time.sleep(TICK_RATE_MS/1000)
 
     except KeyboardInterrupt:
         for i in range(strip.numPixels()):
