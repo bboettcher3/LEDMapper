@@ -1,3 +1,4 @@
 colour
 pygame
+recordclass
 rpi_ws281x

@@ -1,8 +1,7 @@
 # Local imports
-from presets import solidGradient
+from presets.solidGradient import solidGradient
 
 # Standard library
-from collections import namedtuple
 from enum import Enum
 from pickle import FALSE
 import argparse
@@ -12,6 +11,7 @@ import time
 
 # Third-party libraries
 from colour import Color
+from recordclass import recordclass
 from rpi_ws281x import PixelStrip
 import pygame, pygame.midi
 
@@ -39,8 +39,8 @@ RESOLUTION_24BIT = 256.0
 DEFAULT_BRIGHTNESS = 0.8
 
 
-LEDState = namedtuple("LEDState", ["movementRate", "color", "brightness", "param", "timestamp"])
-Preset = namedtuple("Preset", ["name", "idx", "func"])
+LEDState = recordclass("LEDState", ["movementRate", "color", "brightness", "param", "timestamp"])
+Preset = recordclass("Preset", ["name", "idx", "func"])
 
 class LEDManager:
     def __init__(self, presets, strip):
@@ -48,7 +48,7 @@ class LEDManager:
         self._input = None
         self._currentPreset = 0
         self._strip = strip
-        self._state = LEDState(0.0, "red", DEFAULT_BRIGHTNESS, 0, 0)
+        self._state = LEDState(0.0, Color("red"), DEFAULT_BRIGHTNESS, 0, 0)
 
     def handleMidiMessage(self, message):
         messageCC, messageVal = message[0][1], message[0][2]
@@ -74,7 +74,7 @@ class LEDManager:
 
     @property
     def currentPreset(self):
-        return self.presets[self.currentPreset]
+        return self.presets[self._currentPreset]
 
 # Main program logic follows:
 if __name__ == '__main__':
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     # open the first non-internal MIDI internal device
     inp = pygame.midi.Input(3)
 
-    presets = [Preset("Solid Gradient", solidGradient)]
+    presets = [Preset("Solid Gradient", 0, solidGradient)]
     LEDS = LEDManager(presets, strip)
 
     try:

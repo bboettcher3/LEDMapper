@@ -1,4 +1,5 @@
 from colour import Color
+LED_COUNT = 150        # Number of LED pixels.
 
 def _get24BitColor(color):
     return (int(color.red * 255) << 16) | (int(color.green * 255) << 8) | int(color.blue * 255)
@@ -8,7 +9,7 @@ def _colorScale(begin_hsl, end_hsl, nb):
     if nb < 0:
         raise ValueError("Unsupported negative number of colors (nb=%r)." % nb)
 
-    step = tuple([float(end_hsl[i] - begin_hsl[i]) / nb for i in range(0, 3)]) \
+    step = tuple([float(end_hsl[i] - begin_hsl[i]) // nb for i in range(0, 3)]) \
            if nb > 0 else (0, 0, 0)
 
     def mul(step, value):
@@ -23,12 +24,12 @@ def _rangeTo(start, end, steps):
 
 # Applies a solid gradient across the strip
 # gradientAmount: Amount of hue to interpolate for the end color of the strip (0.0-1.0)
-def solidGradient(strip, state: LEDState):
+def solidGradient(strip, state):
     curColor = state.color
     curMovementRate = state.movementRate
     endHue = curColor.hue + state.param
     endColor = Color(hue = endHue, saturation = 1, luminance = curColor.luminance)
-    gradientColors = list(_rangeTo(curColor, endColor, LED_COUNT / 2))
+    gradientColors = list(_rangeTo(curColor, endColor, LED_COUNT // 2))
     smoothColors = gradientColors + list(reversed(gradientColors))
     startIdx = int(state.timestamp * curMovementRate * 4) % LED_COUNT
     rotColors = [smoothColors[(i+startIdx) % len(smoothColors)] for i in range(len(smoothColors))]
