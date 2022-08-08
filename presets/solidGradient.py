@@ -25,13 +25,11 @@ def _rangeTo(start, end, steps):
 # Applies a solid gradient across the strip
 # gradientAmount: Amount of hue to interpolate for the end color of the strip (0.0-1.0)
 def solidGradient(strip, state):
-    curColor = state.color
-    curMovementRate = state.movementRate
-    endHue = curColor.hue + state.param
-    endColor = Color(hue = endHue, saturation = 1, luminance = curColor.luminance)
-    gradientColors = list(_rangeTo(curColor, endColor, LED_COUNT // 2))
+    endHue = state.color.hue + state.colorWidth
+    endColor = Color(hue = endHue, saturation = 1, luminance = state.color.luminance)
+    gradientColors = list(_rangeTo(state.color, endColor, LED_COUNT // 2))
     smoothColors = gradientColors + list(reversed(gradientColors))
-    startIdx = int(state.timestamp * curMovementRate * 4) % LED_COUNT
+    startIdx = int(state.timestamp * state.movementRate * 4) % LED_COUNT
     rotColors = [smoothColors[(i+startIdx) % len(smoothColors)] for i in range(len(smoothColors))]
     for i in range(strip.numPixels()):
         pixelColor = _get24BitColor(rotColors[i])

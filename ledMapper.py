@@ -1,5 +1,6 @@
 # Local imports
 from presets.solidGradient import solidGradient
+from presets.trails import trails
 
 # Standard library
 from enum import Enum
@@ -30,17 +31,17 @@ LED_CHANNEL = 0       # set to '1' for GPIOs 13, 19, 41, 45 or 53
 MIDI_CC_BRIGHTNESS = 15
 MIDI_CC_COLOR = 11
 MIDI_CC_MV_RATE = 7
-
+MIDI_CC_COLOR_WIDTH = 3
 
 # Other globals
 TICK_RATE_MS = 50.0
 RESOLUTION_MIDI = 128.0
 RESOLUTION_24BIT = 256.0
 DEFAULT_BRIGHTNESS = 0.8
+DEFAULT_COLOR_WIDTH = 0.0
 
-
-LEDState = recordclass("LEDState", ["movementRate", "color", "brightness", "param", "timestamp"])
-Preset = recordclass("Preset", ["name", "idx", "func"])
+LEDState = recordclass("LEDState", ["movementRate", "color", "colorWidth", "brightness", "param", "timestamp"])
+Preset = recordclass("Preset", ["name", "func"])
 
 class LEDManager:
     def __init__(self, presets, strip):
@@ -48,7 +49,7 @@ class LEDManager:
         self._input = None
         self._currentPreset = 0
         self._strip = strip
-        self._state = LEDState(0.0, Color("red"), DEFAULT_BRIGHTNESS, 0, 0)
+        self._state = LEDState(0.0, Color("red"), DEFAULT_COLOR_WIDTH, DEFAULT_BRIGHTNESS, 0, 0)
 
     def handleMidiMessage(self, message):
         messageCC, messageVal = message[0][1], message[0][2]
@@ -59,6 +60,8 @@ class LEDManager:
             self._state.color.luminance = messageVal / RESOLUTION_24BIT
         elif messageCC == MIDI_CC_MV_RATE:
             self._state.movementRate = messageVal / RESOLUTION_MIDI
+        elif messageCC == MIDI_CC_COLOR_WIDTH:
+            self._state.colorWidth = messageVal / RESOLUTION_MIDI
         else:
             self.changePreset(messageCC)
             self._state.param = messageVal / RESOLUTION_MIDI
@@ -90,7 +93,7 @@ if __name__ == '__main__':
     # open the first non-internal MIDI internal device
     inp = pygame.midi.Input(3)
 
-    presets = [Preset("Solid Gradient", 0, solidGradient)]
+    presets = [Preset("Solid Gradient", solidGradient), Preset("Trails", trails)]
     LEDS = LEDManager(presets, strip)
 
     try:
