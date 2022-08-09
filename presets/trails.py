@@ -1,7 +1,8 @@
 from colour import Color
 import random
 LED_COUNT = 150        # Number of LED pixels.
-MAX_TRAILS = 5
+MAX_TRAILS = 10
+TRAIL_WIDTH = int(LED_COUNT * 0.66)
 
 def _get24BitColor(color):
     return (int(color.red * 255) << 16) | (int(color.green * 255) << 8) | int(color.blue * 255)
@@ -28,28 +29,32 @@ def _rangeTo(start, end, steps):
 # numTrails: Number of trails
 def trails(strip, state):
     numTrails = max(1, int(state.param * MAX_TRAILS))
-    trailWidth = int(LED_COUNT / numTrails)
     endHue = state.color.hue + state.colorWidth
     endColor = Color(hue = endHue, saturation = 1, luminance = state.color.luminance)
     trailColors = list(_rangeTo(state.color, endColor, numTrails))
-    trailSpeeds = [i * state.movementRate / (numTrails - 1) for i in range(numTrails)]
-    trailPositions = [int(state.timestamp * state.movementRate * 4 * trailSpeeds[i]) % LED_COUNT for i in range(numTrails)]
+    trailSpeeds = [(i + 1) * state.movementRate / numTrails for i in range(numTrails)]
+    trailPositions = [int(state.timestamp * state.movementRate * 8 * trailSpeeds[i]) % LED_COUNT for i in range(numTrails)]
+    #print(trailSpeeds)
+    #print(state.movementRate)
+    #print("----")
     for i in range(strip.numPixels()):
         hueContribs = []
         strengthContribs = []
         for j in range(numTrails):
-            trailEndPos = (trailPositions[j] - trailWidth) % LED_COUNT
-            if i <= trailPositions[j] or i >= trailEndPos:
-                if trailEndPos < trailPositions[j]:
-                    strength = (i - trailEndPos) / (trailPositions[j] - trailEndPos)
-                else:
-                    strength = (i + LED_COUNT - trailEndPos) / (trailPositions[j] + LED_COUNT - trailEndPos)
+            trailEndPos = trailPositions[j] - TRAIL_WIDTH
+            strength = 0.0
+            if i <= trailPositions[j] and i >= trailEndPos:
+                strength = (i - trailEndPos) / float(TRAIL_WIDTH)
+            elif i > trailPositions[j] and i >= (trailEndPos % LED_COUNT):
+                strength = (i - LED_COUNT - trailEndPos) / float(TRAIL_WIDTH)
+            if strength > 0.01:
                 hueContribs.append(trailColors[j].hue)
                 strengthContribs.append(strength)
         if len(hueContribs) > 0:
             weightedSum = sum([hueContribs[i]*strengthContribs[i] for i in range(len(hueContribs))])
             finalHue = weightedSum / sum(strengthContribs)
-            finalLum = min(1.0, sum(strengthContribs) / 2.0)
+            finalLum = min(0.5, sum(strengthContribs) / 4.0)
+            #print(f"{i}: {strengthContribs}")
             pixelColor = _get24BitColor(Color(hue=finalHue, saturation=1, luminance=finalLum))
         else:
             pixelColor = _get24BitColor(Color("black"))

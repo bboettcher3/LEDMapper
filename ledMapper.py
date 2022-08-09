@@ -34,7 +34,7 @@ MIDI_CC_MV_RATE = 7
 MIDI_CC_COLOR_WIDTH = 3
 
 # Other globals
-TICK_RATE_MS = 50.0
+TICK_RATE_MS = 30.0
 RESOLUTION_MIDI = 128.0
 RESOLUTION_24BIT = 256.0
 DEFAULT_BRIGHTNESS = 0.8
@@ -49,7 +49,7 @@ class LEDManager:
         self._input = None
         self._currentPreset = 0
         self._strip = strip
-        self._state = LEDState(0.0, Color("red"), DEFAULT_COLOR_WIDTH, DEFAULT_BRIGHTNESS, 0, 0)
+        self._state = LEDState(0.0, Color("red"), DEFAULT_COLOR_WIDTH, DEFAULT_BRIGHTNESS, 0.0, 0)
 
     def handleMidiMessage(self, message):
         messageCC, messageVal = message[0][1], message[0][2]
